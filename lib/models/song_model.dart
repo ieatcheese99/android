@@ -4,6 +4,7 @@ class Song {
   final String artist;
   final String coverUrl;
   final String tag;
+  final String audioUrl;
 
   Song({
     required this.id,
@@ -11,7 +12,17 @@ class Song {
     required this.artist,
     required this.coverUrl,
     required this.tag,
+    required this.audioUrl,
   });
+  @override
+  bool operator == (Object other) =>
+  identical(this, other) || 
+  other is Song &&
+  runtimeType == other.runtimeType &&
+  id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 final List<Song> sampleSongs = [
@@ -21,12 +32,14 @@ final List<Song> sampleSongs = [
     artist: 'Lo-Fi Chill Hop',
     coverUrl: 'https://picsum.photos/id/145/800/600',
     tag: 'Trending',
+    audioUrl: 'assets/audio/Raya(Slowed).mp3',
   ),
   Song(
     id: '2',
     title: 'Cyberpunk Synthwave',
     artist: 'Neon Vibe Studio',
     coverUrl: 'https://picsum.photos/id/1067/800/600',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
     tag: 'Popular',
   ),
   Song(
@@ -35,5 +48,6 @@ final List<Song> sampleSongs = [
     artist: 'Indie Chill',
     coverUrl: 'https://picsum.photos/id/225/800/600',
     tag: 'Relax',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
   ),
 ];
