@@ -28,11 +28,11 @@ class Song {
 final List<Song> sampleSongs = [
   Song(
     id: '1',
-    title: 'Midnight Coding Beats',
-    artist: 'Lo-Fi Chill Hop',
+    title: 'Self Aware',
+    artist: 'The 1975',
     coverUrl: 'https://picsum.photos/id/145/800/600',
     tag: 'Trending',
-    audioUrl: 'assets/audio/Raya(Slowed).mp3',
+    audioUrl: 'audio/SelfAware.mp3',
   ),
   Song(
     id: '2',
@@ -50,4 +50,14 @@ final List<Song> sampleSongs = [
     tag: 'Relax',
     audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
   ),
+];
+
+final List<String> categories = [
+  'All',
+  'Trending',
+  'Popular',
+  'Relax',
+  'Workout',
+  'Focus',
+  'Chill',
 ];

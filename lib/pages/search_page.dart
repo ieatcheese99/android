@@ -64,8 +64,11 @@ class _SearchPageState extends State<SearchPage> {
                               style: TextStyle(color: Colors.grey[500])))
                       : ListView.builder(
                           itemCount: results.length,
-                          itemBuilder: (context, index) =>
-                              SongCard(song: results[index]),
+                          itemBuilder: (context, index) => SongCard(
+                            song: results[index],
+                            playlist: results,
+                            index: index,
+                          ),
                         ),
             ),
           ],
