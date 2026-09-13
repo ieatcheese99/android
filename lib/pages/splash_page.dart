@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:android/pages/login_page.dart';
 import 'package:android/pages/main_navigation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -44,18 +46,29 @@ class _SplashScreenState extends State<SplashScreen>
 
 
     Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const MainNavigation(),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 600),
-          ),
-        );
+      if (!mounted) return;
+
+      Widget targetPage;
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        targetPage = (user != null)
+            ? const MainNavigation()
+            : const LoginScreen();
+      } catch (e) {
+        debugPrint("Auth check error in splash: $e");
+        targetPage = const LoginScreen();
       }
+
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, _, _) => targetPage,
+          transitionsBuilder: (_, animation, _, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          transitionDuration: const Duration(milliseconds: 600),
+        ),
+      );
     });
   }
 
@@ -94,10 +107,10 @@ class _SplashScreenState extends State<SplashScreen>
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.purpleAccent.withOpacity(0.4),
+                          color: Colors.purpleAccent.withValues(alpha: 0.4),
                           blurRadius: 40,
                           spreadRadius: 8,
                         ),
@@ -129,7 +142,7 @@ class _SplashScreenState extends State<SplashScreen>
                     'Rasakan musik dengan caramu',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.75),
+                      color: Colors.white.withValues(alpha: 0.75),
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -140,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.white.withOpacity(0.8),
+                        Colors.white.withValues(alpha: 0.8),
                       ),
                     ),
                   ),
