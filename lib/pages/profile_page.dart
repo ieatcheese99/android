@@ -1,11 +1,11 @@
-import 'package:android/models/song_model.dart';
-import 'package:android/pages/favorite_page.dart' show FavoritePage;
-import 'package:android/pages/login_page.dart';
-import 'package:android/providers/favorite_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/song_model.dart';
+import '../providers/favorite_provider.dart';
+import 'favorite_page.dart';
+import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final List<Song> allSongs;
@@ -17,22 +17,18 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
-
     if (!mounted) return;
-
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const LoginScreen()),
       (route) => false,
     );
   }
 
-  // ============================================================
-
   void _showEditProfileDialog() {
     final user = FirebaseAuth.instance.currentUser;
+
     final nameController = TextEditingController(text: user?.displayName);
 
     showDialog(
@@ -49,23 +45,29 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         actions: [
           TextButton(
-            // PENTING: pakai ctx (milik dialog), bukan context (milik halaman)
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Batal'),
           ),
           ElevatedButton(
             onPressed: () async {
               final newName = nameController.text.trim();
+
               if (newName.isEmpty) return;
 
-              // 1. Simpan nama baru ke Firebase Auth
-              await user?.updateDisplayName(newName);
-              // 2. Ambil ulang data user terbaru dari server
-              await user?.reload();
+              try {
+                await user?.updateDisplayName(newName);
+                await FirebaseAuth.instance.currentUser?.reload();
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                if (!mounted) return;
+                setState(() {});
+              } catch (e) {
+                if (!ctx.mounted) return;
 
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx); // 3. Tutup dialog
-              setState(() {}); //    4. Gambar ulang halaman -> nama baru muncul
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('Gagal memperbarui nama: $e')),
+                );
+              }
             },
             child: const Text('Simpan'),
           ),
@@ -73,11 +75,13 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
- 
+
   @override
   Widget build(BuildContext context) {
     final favProvider = context.watch<FavoriteProvider>();
+
     final likedCount = favProvider.favoriteIds.length;
+
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
@@ -94,17 +98,22 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           children: [
             const SizedBox(height: 10),
+
             const CircleAvatar(
               radius: 48,
               backgroundColor: Color(0xFF6366F1),
               child: Icon(Icons.person_rounded, size: 48, color: Colors.white),
             ),
+
             const SizedBox(height: 16),
+
             Text(
               currentUser?.displayName ?? 'User Test',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 4),
+
             Text(
               currentUser?.email ?? 'Music Enthusiast',
               style: TextStyle(color: Colors.grey[400], fontSize: 13),
@@ -140,17 +149,18 @@ class _ProfilePageState extends State<ProfilePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    // [DIUBAH - SESI 2] allSongs -> widget.allSongs
-                    // (karena sekarang kita ada di dalam class State)
-                    builder: (context) => FavoritePage(allSongs: widget.allSongs),
+                    builder: (context) => FavoritePage(
+                      allSongs: widget.allSongs,
+                    ),
                   ),
                 );
               },
             ),
+
             _buildMenuItem(Icons.history_rounded, 'Recently Played'),
+
             _buildMenuItem(Icons.storage_rounded, 'Clear Cache Data'),
 
-            // [BARU - SESI 2] Menu untuk membuka pop-up edit profil
             _buildMenuItem(
               Icons.edit_rounded,
               'Edit Profile',
@@ -165,7 +175,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Icons.logout_rounded,
               'Logout',
               isDanger: true,
-              onTap: _logout, // [DIUBAH - SESI 2] tidak perlu kirim context lagi
+              onTap: _logout,
             ),
           ],
         ),
@@ -201,29 +211,33 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+      child: Material(
         color: const Color(0xFF151922),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDanger ? Colors.redAccent.withAlpha(50) : Colors.white10,
-        ),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor, size: 22),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: textColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDanger ? Colors.redAccent.withAlpha(50) : Colors.white10,
           ),
         ),
-        trailing: Icon(
-          Icons.arrow_forward_ios_rounded,
-          size: 14,
-          color: isDanger ? Colors.redAccent.withAlpha(150) : Colors.grey,
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          leading: Icon(icon, color: iconColor, size: 22),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: textColor,
+            ),
+          ),
+          trailing: Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 14,
+            color: isDanger ? Colors.redAccent.withAlpha(150) : Colors.grey,
+          ),
+          onTap: onTap,
         ),
-        onTap: onTap,
       ),
     );
   }

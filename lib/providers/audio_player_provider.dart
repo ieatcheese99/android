@@ -1,81 +1,212 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song_model.dart';
 
 class AudioPlayerProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
-  List<Song> _playlist = [];
-  int _currentIndex = 0;
   Song? _currentSong;
+
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  bool _isLoading = false;
+  bool _lastPlayingState = false;
+
+  String? _errorMessage;
+
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration?>? _durationSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+
+  int _loadRequestId = 0;
+
+  AudioPlayerProvider() {
+    _positionSubscription = _player.positionStream.listen((position) {
+      _position = position;
+    });
+
+    _durationSubscription = _player.durationStream.listen((duration) {
+      _duration = duration ?? Duration.zero;
+    });
+
+    _playerStateSubscription = _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        _position = _duration;
+        notifyListeners();
+      }
+
+      final isPlayingNow = state.playing;
+
+      if (_lastPlayingState != isPlayingNow) {
+        _lastPlayingState = isPlayingNow;
+        notifyListeners();
+      }
+    });
+  }
 
   AudioPlayer get player => _player;
   Song? get currentSong => _currentSong;
-  List<Song> get playlist => _playlist;
-  int get currentIndex => _currentIndex;
   bool get isPlaying => _player.playing;
 
-  bool get hasPrevious => _playlist.isNotEmpty && _currentIndex > 0;
-  bool get hasNext => _playlist.isNotEmpty && _currentIndex < _playlist.length - 1;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+  Duration get position => _position;
+  Duration get duration => _duration;
 
-  Future<void> playSong(Song song, {List<Song>? playlist, int? index}) async {
-    if (playlist != null && playlist.isNotEmpty) {
-      _playlist = playlist;
-      _currentIndex = index ?? playlist.indexWhere((s) => s.id == song.id);
-      if (_currentIndex == -1) _currentIndex = 0;
-    }
-
-    // Jika lagu yang sama masih diputar, tidak perlu reload audio
+  Future<void> playSong(Song song) async {
     if (_currentSong?.id == song.id) {
-      if (!_player.playing) _player.play();
+      await togglePlayPause();
       return;
     }
 
+    await _loadAndPlaySong(song);
+  }
+
+  Future<void> skipToSong(Song song) async {
+    if (song.audioUrl.trim().isEmpty) {
+      _errorMessage = 'Path audio belum diisi.';
+      notifyListeners();
+      return;
+    }
+
+    await _loadAndPlaySong(song);
+  }
+
+  Future<void> _loadAndPlaySong(Song song) async {
+    if (song.audioUrl.trim().isEmpty) {
+      _errorMessage = 'Path audio belum diisi.';
+      notifyListeners();
+      return;
+    }
+
+    final requestId = ++_loadRequestId;
+
+    _currentSong = song;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _isLoading = true;
+    _errorMessage = null;
+
+    notifyListeners();
+
     try {
-      _currentSong = song;
-      notifyListeners();
+      final audioPath = song.audioUrl.trim();
 
-      if (song.audioUrl.startsWith('http://') || song.audioUrl.startsWith('https://')) {
-        await _player.setUrl(song.audioUrl);
+      if (audioPath.startsWith('http://') || audioPath.startsWith('https://')) {
+        await _player.setUrl(audioPath);
       } else {
-        await _player.setAsset(song.audioUrl);
+        final assetPath = audioPath.startsWith('assets/')
+            ? audioPath.substring('assets/'.length)
+            : audioPath;
+
+        await _player.setAsset(assetPath);
       }
-      await _player.play();
+
+      if (requestId != _loadRequestId) return;
+
+      _duration = _player.duration ?? Duration.zero;
+      _position = Duration.zero;
+      _isLoading = false;
+
       notifyListeners();
-    } catch (e) {
-      debugPrint("Error loading audio: $e");
+      unawaited(_startPlayback(requestId));
+    } catch (error, stackTrace) {
+      debugPrint('AUDIO LOAD ERROR: $error');
+      debugPrint('$stackTrace');
+
+      if (requestId != _loadRequestId) return;
+
+      _errorMessage = 'Gagal memuat lagu: $error';
+      _isLoading = false;
+
+      notifyListeners();
     }
   }
 
-  Future<void> next() async {
-    if (hasNext) {
-      _currentIndex++;
-      await playSong(_playlist[_currentIndex]);
+  Future<void> _startPlayback(int requestId) async {
+    try {
+      await _player.play();
+    } catch (error, stackTrace) {
+      debugPrint('AUDIO PLAY ERROR: $error');
+      debugPrint('$stackTrace');
+
+      if (requestId != _loadRequestId) return;
+
+      _errorMessage = 'Gagal memutar audio: $error';
+
+      notifyListeners();
     }
   }
 
-  Future<void> previous() async {
-    if (_player.position.inSeconds > 3) {
-      seek(Duration.zero);
-    } else if (hasPrevious) {
-      _currentIndex--;
-      await playSong(_playlist[_currentIndex]);
-    } else {
-      seek(Duration.zero);
+  Future<void> togglePlayPause() async {
+    try {
+      if (_isLoading) return;
+
+      if (_player.playing) {
+        await _player.pause();
+      } else {
+        if (_player.processingState == ProcessingState.completed) {
+          await _player.seek(Duration.zero);
+        }
+
+        unawaited(_startPlayback(_loadRequestId));
+      }
+    } catch (error, stackTrace) {
+      debugPrint('AUDIO CONTROL ERROR: $error');
+      debugPrint('$stackTrace');
+
+      _errorMessage = 'Gagal mengontrol audio: $error';
+
+      notifyListeners();
     }
   }
 
-  void togglePlayPause() {
-    _player.playing ? _player.pause() : _player.play();
+  Future<void> seek(Duration position) async {
+    if (_duration <= Duration.zero) return;
+
+    final targetMilliseconds = position.inMilliseconds.clamp(
+      0,
+      _duration.inMilliseconds,
+    );
+
+    final target = Duration(milliseconds: targetMilliseconds);
+
+    try {
+      await _player.seek(target);
+
+      _position = target;
+    } catch (error, stackTrace) {
+      debugPrint('AUDIO SEEK ERROR: $error');
+      debugPrint('$stackTrace');
+
+      _errorMessage = 'Gagal mengubah posisi lagu: $error';
+
+      notifyListeners();
+    }
   }
 
-  void seek(Duration position) {
-    _player.seek(position);
+  Future<void> stopSong() async {
+    _loadRequestId++;
+
+    await _player.stop();
+
+    _currentSong = null;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _isLoading = false;
+    _errorMessage = null;
+
+    notifyListeners();
   }
 
   @override
   void dispose() {
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _playerStateSubscription?.cancel();
     _player.dispose();
+
     super.dispose();
   }
 }
-

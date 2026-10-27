@@ -1,12 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-import 'package:android/pages/detail_page.dart';
-import 'package:android/providers/audio_player_provider.dart';
-import '../models/song_model.dart';
-import '../widgets/song_card.dart';
 
-enum SortOption { defaultOrder, titleAZ, titleZA, artistAZ, artistZA }
+import '../models/song_model.dart';
+import '../providers/audio_player_provider.dart';
+import '../widgets/song_card.dart';
+import 'detail_page.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -16,235 +15,345 @@ class FeedPage extends StatefulWidget {
 }
 
 class _FeedPageState extends State<FeedPage> {
-  SortOption _sortOption = SortOption.defaultOrder;
+  // [BARU]
+  // Stream untuk mendengarkan data lagu dari koleksi Firestore "songs".
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _songsStream;
+
   String _selectedCategory = 'All';
 
-  // --- LOGIKA FILTER & SORTING ---
-  List<Song> get _filteredAndSortedSongs {
-    List<Song> songs = _selectedCategory == 'All'
-        ? List<Song>.from(sampleSongs)
-        : sampleSongs
-            .where(
-              (song) => song.tag.toLowerCase() == _selectedCategory.toLowerCase(),
-            )
-            .toList();
+  @override
+  void initState() {
+    super.initState();
 
-    switch (_sortOption) {
-      case SortOption.titleAZ:
-        songs.sort((a, b) => a.title.compareTo(b.title));
-        break;
-      case SortOption.titleZA:
-        songs.sort((a, b) => b.title.compareTo(a.title));
-        break;
-      case SortOption.artistAZ:
-        songs.sort((a, b) => a.artist.compareTo(b.artist));
-        break;
-      case SortOption.artistZA:
-        songs.sort((a, b) => b.artist.compareTo(a.artist));
-        break;
-      case SortOption.defaultOrder:
-        break;
-    }
-    return songs;
+    // [BARU]
+    // Mengambil snapshot koleksi "songs" secara real-time.
+    // Perubahan dokumen pada koleksi ini dapat menghasilkan snapshot baru.
+    _songsStream = FirebaseFirestore.instance.collection('songs').snapshots();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final songs = _filteredAndSortedSongs;
-
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Discover Vibes',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
-        ),
-        actions: [
-          PopupMenuButton<SortOption>(
-            icon: const Icon(Icons.sort_rounded),
-            onSelected: (value) => setState(() => _sortOption = value),
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: SortOption.defaultOrder, child: Text('Default')),
-              PopupMenuItem(value: SortOption.titleAZ, child: Text('Title A-Z')),
-              PopupMenuItem(value: SortOption.titleZA, child: Text('Title Z-A')),
-              PopupMenuItem(value: SortOption.artistAZ, child: Text('Artist A-Z')),
-              PopupMenuItem(value: SortOption.artistZA, child: Text('Artist Z-A')),
-            ],
-          ),
-        ],
-      ),
-      
-      // DIBUNGKUS SAFEAREA AGAR TIDAK TERTUTUP BOTTOM NAVIGATION BAR
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. CATEGORY CHIPS
-            SizedBox(
-              height: 50,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: categories.length,
-                itemBuilder: (context, index) {
-                  final category = categories[index];
-                  final isSelected = _selectedCategory == category;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(category),
-                      selected: isSelected,
-                      selectedColor: const Color(0xFF6366F1),
-                      backgroundColor: const Color(0xFF151922),
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey[400],
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      onSelected: (bool selected) {
-                        setState(() {
-                          _selectedCategory = category;
-                        });
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // 2. LIST LAGU (DIBUNGKUS EXPANDED)
-            Expanded(
-              child: songs.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Tidak ada lagu untuk genre "$_selectedCategory"',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      itemCount: songs.length,
-                      itemBuilder: (context, index) {
-                        final song = songs[index];
-                        return SongCard(
-                          song: song,
-                          playlist: songs,
-                          index: index,
-                        );
-                      },
-                    ),
-            ),
-
-            // 3. MINI PLAYER (MUNCUL OTOMATIS SAAT LAGU DIPUTAR)
-            Consumer<AudioPlayerProvider>(
-              builder: (context, audioProv, child) {
-                // Sembunyikan jika belum ada lagu yang dipilih
-                if (audioProv.currentSong == null) {
-                  return const SizedBox.shrink();
-                }
-                
-                // Panggil method mini player yang sudah dipisah di bawah
-                return _buildMiniPlayer(context, audioProv);
-              },
-            ),
-          ],
+  // [BARU]
+  // Method ini memusatkan proses navigasi menuju DetailPage.
+  // Lagu, playlist, dan indeks awal dikirim ke halaman detail.
+  void _openDetail({
+    required Song song,
+    required List<Song> playlist,
+    required int initialIndex,
+  }) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetailPage(
+          song: song,
+          playlist: playlist,
+          initialIndex: initialIndex,
         ),
       ),
     );
   }
 
-  // --- WIDGET MINI PLAYER (DIPISAH AGAR KODE BUILD LEBIH BERSIH) ---
-  Widget _buildMiniPlayer(BuildContext context, AudioPlayerProvider audioProv) {
-    return GestureDetector(
-      // Fitur UX: Tap mini player untuk kembali ke DetailPage
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DetailPage(
-              song: audioProv.currentSong!,
-              playlist: audioProv.playlist.isNotEmpty ? audioProv.playlist : null,
-              initialIndex: audioProv.currentIndex,
-            ),
+  // [BARU]
+  // Menentukan playlist dan indeks yang tepat untuk lagu aktif.
+  void _openCurrentSong({
+    required Song currentSong,
+    required List<Song> filteredSongs,
+  }) {
+    // Cari posisi lagu aktif di dalam playlist hasil filter.
+    final filteredIndex = filteredSongs.indexWhere(
+      (song) => song.id == currentSong.id,
+    );
+
+    // Jika lagu ditemukan, buka detail dengan playlist kategori aktif.
+    if (filteredIndex >= 0) {
+      _openDetail(
+        song: currentSong,
+        playlist: filteredSongs,
+        initialIndex: filteredIndex,
+      );
+
+      return;
+    }
+
+    // [BARU]
+    // Jika lagu aktif tidak ada dalam kategori yang sedang dipilih,
+    // gunakan playlist berisi satu lagu agar indeksnya tetap valid.
+    _openDetail(song: currentSong, playlist: [currentSong], initialIndex: 0);
+  }
+
+  // [PERUBAHAN]
+  // Mini player dipisahkan menjadi method tersendiri agar struktur
+  // build() utama lebih mudah dibaca.
+  Widget _buildMiniPlayer(List<Song> filteredSongs) {
+    // Consumer mendengarkan perubahan AudioPlayerProvider.
+    return Consumer<AudioPlayerProvider>(
+      builder: (context, audioProvider, _) {
+        final currentSong = audioProvider.currentSong;
+
+        // Sembunyikan mini player jika belum ada lagu yang dipilih.
+        if (currentSong == null) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.all(12),
+
+          // Tampilan mini player.
+          decoration: BoxDecoration(
+            color: const Color(0xFF202536),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+
+          child: Row(
+            children: [
+              // [PERUBAHAN]
+              // Menggunakan imageUrl sesuai model Song terbaru.
+              // Jika URL kosong atau gambar gagal dimuat,
+              // tampilkan ikon musik sebagai pengganti.
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: currentSong.coverUrl.trim().isNotEmpty
+                    ? Image.network(
+                        currentSong.coverUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.music_note_rounded,
+                            color: Colors.white,
+                          );
+                        },
+                      )
+                    : const Icon(Icons.music_note_rounded, color: Colors.white),
+              ),
+
+              const SizedBox(width: 12),
+
+              // [BARU]
+              // Judul dan artis bisa diketuk untuk membuka DetailPage.
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    _openCurrentSong(
+                      currentSong: currentSong,
+                      filteredSongs: filteredSongs,
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        currentSong.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Text(
+                        currentSong.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // [PERUBAHAN]
+              // Menggunakan state dari AudioPlayerProvider.
+              // Saat loading, ikon berubah menjadi ikon proses loading.
+              IconButton(
+                tooltip: audioProvider.isPlaying ? 'Pause' : 'Play',
+                onPressed: () async {
+                  // Jangan jalankan kontrol ketika audio sedang dimuat.
+                  if (audioProvider.isLoading) return;
+
+                  await audioProvider.togglePlayPause();
+                },
+                icon: Icon(
+                  audioProvider.isLoading
+                      ? Icons.hourglass_top_rounded
+                      : audioProvider.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  color: const Color(0xFF818CF8),
+                  size: 28,
+                ),
+              ),
+
+              // [BARU]
+              // Membuka halaman pemutar secara langsung.
+              IconButton(
+                tooltip: 'Buka pemutar',
+                onPressed: () {
+                  _openCurrentSong(
+                    currentSong: currentSong,
+                    filteredSongs: filteredSongs,
+                  );
+                },
+                icon: const Icon(
+                  Icons.open_in_full_rounded,
+                  color: Color(0xFF818CF8),
+                ),
+              ),
+
+              // Menghentikan audio dan menghapus lagu aktif dari provider.
+              IconButton(
+                tooltip: 'Hentikan lagu',
+                onPressed: () async {
+                  await audioProvider.stopSong();
+                },
+                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+              ),
+            ],
           ),
         );
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF252A39), // Warna sedikit lebih terang agar terlihat jelas
-          border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Music Vibes',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
         ),
-        child: Row(
-          children: [
-            // Cover Album
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                audioProv.currentSong!.coverUrl,
-                width: 45,
-                height: 45,
-                fit: BoxFit.cover,
+        backgroundColor: Colors.transparent,
+      ),
+
+      // [BARU]
+      // StreamBuilder menangani status pengambilan data dari Firestore.
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _songsStream,
+        builder: (context, snapshot) {
+          // Jika pengambilan data gagal, tampilkan pesan error.
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text('Gagal mengambil data dari Firebase.'),
+            );
+          }
+
+          // Jika data belum tersedia, tampilkan indikator loading.
+          if (!snapshot.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+            );
+          }
+
+          // [PERUBAHAN]
+          // Mengubah setiap dokumen Firestore menjadi objek Song.
+          // Sebelumnya, daftar lagu diambil dari sampleSongs.
+          final songs = snapshot.data!.docs
+              .map((doc) => Song.fromFirestore(doc))
+              .toList();
+
+          // [PERUBAHAN]
+          // Filter dilakukan pada daftar lagu yang diterima dari Firebase.
+          // Kategori "All" menampilkan seluruh lagu.
+          final filteredSongs = _selectedCategory == 'All'
+              ? songs
+              : songs
+                    .where(
+                      (song) =>
+                          song.tag.toLowerCase() ==
+                          _selectedCategory.toLowerCase(),
+                    )
+                    .toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Text(
+                  'Temukan musik favoritmu',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Judul & Artis
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    audioProv.currentSong!.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Colors.white,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    audioProv.currentSong!.artist,
-                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+
+              // FILTER KATEGORI
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // Membuat ChoiceChip berdasarkan daftar categories.
+                    for (final category in categories)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(category),
+                          selected: _selectedCategory == category,
+
+                          // [PERUBAHAN]
+                          // Memperbarui kategori aktif ketika chip dipilih.
+                          onSelected: (_) {
+                            setState(() {
+                              _selectedCategory = category;
+                            });
+                          },
+
+                          selectedColor: const Color(0xFF6366F1),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            
-            // Tombol Play/Pause
-            StreamBuilder<PlayerState>(
-              stream: audioProv.player.playerStateStream,
-              builder: (context, snapshot) {
-                final isPlaying = snapshot.data?.playing ?? false;
-                return IconButton(
-                  icon: Icon(
-                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  onPressed: audioProv.togglePlayPause,
-                );
-              },
-            ),
-          ],
-        ),
+
+              const SizedBox(height: 8),
+              // DAFTAR LAGU
+              Expanded(
+                child: filteredSongs.isEmpty
+                    ? Center(
+                        child: Text(
+                          // Bedakan kondisi koleksi kosong dan kategori kosong.
+                          songs.isEmpty
+                              ? 'Belum ada lagu di Firebase.'
+                              : 'Tidak ada lagu pada kategori ini.',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredSongs.length,
+                        itemBuilder: (context, index) {
+                          final song = filteredSongs[index];
+
+                          // [PERUBAHAN]
+                          // Setiap kartu menerima lagu, playlist hasil filter,
+                          // dan indeks lagu dalam playlist tersebut.
+                          return SongCard(
+                            song: song,
+                            playlist: filteredSongs,
+                            index: index,
+                          );
+                        },
+                      ),
+              ),
+
+              // [PERUBAHAN]
+              // Mini player ditampilkan di bagian bawah halaman.
+              // Jika tidak ada lagu aktif, widget ini tidak ditampilkan.
+              _buildMiniPlayer(filteredSongs),
+            ],
+          );
+        },
       ),
     );
   }

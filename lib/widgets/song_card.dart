@@ -14,8 +14,9 @@ class SongCard extends StatelessWidget {
     super.key,
     required this.song,
     this.playlist,
-    this.index = 0,
-  });
+    int? index,
+    int? initialIndex,
+  }) : index = initialIndex ?? index ?? 0;
 
   @override
   Widget build(BuildContext context) {
