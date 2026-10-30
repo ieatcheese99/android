@@ -28,8 +28,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _showEditProfileDialog() {
     final user = FirebaseAuth.instance.currentUser;
+    final userDisplayName = user?.displayName?.trim();
+    final currentName = (userDisplayName != null && userDisplayName.isNotEmpty)
+        ? userDisplayName
+        : (user?.email?.split('@').first ?? '');
 
-    final nameController = TextEditingController(text: user?.displayName);
+    final nameController = TextEditingController(text: currentName);
 
     showDialog(
       context: context,
@@ -40,6 +44,7 @@ class _ProfilePageState extends State<ProfilePage> {
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Nama',
+            hintText: 'Masukkan nama tampilan',
             prefixIcon: Icon(Icons.person_outline),
           ),
         ),
@@ -55,8 +60,9 @@ class _ProfilePageState extends State<ProfilePage> {
               if (newName.isEmpty) return;
 
               try {
-                await user?.updateDisplayName(newName);
-                await FirebaseAuth.instance.currentUser?.reload();
+                final activeUser = FirebaseAuth.instance.currentUser;
+                await activeUser?.updateDisplayName(newName);
+                await activeUser?.reload();
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 if (!mounted) return;
@@ -83,6 +89,13 @@ class _ProfilePageState extends State<ProfilePage> {
     final likedCount = favProvider.favoriteIds.length;
 
     final currentUser = FirebaseAuth.instance.currentUser;
+    final rawName = currentUser?.displayName?.trim();
+    final userEmail = currentUser?.email;
+    final displayName = (rawName != null && rawName.isNotEmpty)
+        ? rawName
+        : (userEmail != null && userEmail.contains('@')
+            ? userEmail.split('@').first
+            : 'User Test');
 
     return Scaffold(
       appBar: AppBar(
@@ -108,7 +121,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 16),
 
             Text(
-              currentUser?.displayName ?? 'User Test',
+              displayName,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
@@ -211,33 +224,32 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Material(
+      decoration: BoxDecoration(
         color: const Color(0xFF151922),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDanger ? Colors.redAccent.withAlpha(50) : Colors.white10,
+        ),
+      ),
+      child: ListTile(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: isDanger ? Colors.redAccent.withAlpha(50) : Colors.white10,
+        ),
+        leading: Icon(icon, color: iconColor, size: 22),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: textColor,
           ),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          leading: Icon(icon, color: iconColor, size: 22),
-          title: Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: textColor,
-            ),
-          ),
-          trailing: Icon(
-            Icons.arrow_forward_ios_rounded,
-            size: 14,
-            color: isDanger ? Colors.redAccent.withAlpha(150) : Colors.grey,
-          ),
-          onTap: onTap,
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          size: 14,
+          color: isDanger ? Colors.redAccent.withAlpha(150) : Colors.grey,
         ),
+        onTap: onTap,
       ),
     );
   }
